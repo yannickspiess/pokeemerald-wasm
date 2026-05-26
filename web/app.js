@@ -30,6 +30,7 @@ const canvas = document.querySelector('#screen');
 const statusEl = document.querySelector('#status');
 const ctx = canvas.getContext('2d');
 const image = ctx.createImageData(WIDTH, HEIGHT);
+const layerData = new Uint8Array(WIDTH * HEIGHT);
 const pressed = new Set();
 
 let instance;
@@ -49,19 +50,49 @@ function gbaColor(value) {
   return [r | 0, g | 0, b | 0];
 }
 
-function putPixel(x, y, color) {
+function activeBlendColor(color, layer, pixel) {
+  const bldcnt = u16[(REG + 0x50) >> 1];
+  const effect = (bldcnt >> 6) & 3;
+  const sourceTargets = bldcnt & 0x3f;
+  if (!(sourceTargets & layer) || effect === 0) return color;
+
+  if (effect === 1 && (bldcnt >> 8) & layerData[pixel]) {
+    const alpha = u16[(REG + 0x52) >> 1];
+    const eva = Math.min(alpha & 0x1f, 16);
+    const evb = Math.min((alpha >> 8) & 0x1f, 16);
+    return [
+      Math.min(255, (color[0] * eva + image.data[pixel * 4] * evb) >> 4),
+      Math.min(255, (color[1] * eva + image.data[pixel * 4 + 1] * evb) >> 4),
+      Math.min(255, (color[2] * eva + image.data[pixel * 4 + 2] * evb) >> 4),
+    ];
+  }
+
+  const evy = Math.min(u16[(REG + 0x54) >> 1] & 0x1f, 16);
+  if (effect === 2) {
+    return color.map((component) => component + (((255 - component) * evy) >> 4));
+  }
+  if (effect === 3) {
+    return color.map((component) => component - ((component * evy) >> 4));
+  }
+  return color;
+}
+
+function putPixel(x, y, color, layer = 0x20) {
   if (x < 0 || y < 0 || x >= WIDTH || y >= HEIGHT) return;
-  const p = (y * WIDTH + x) * 4;
-  image.data[p] = color[0];
-  image.data[p + 1] = color[1];
-  image.data[p + 2] = color[2];
+  const pixel = y * WIDTH + x;
+  const output = activeBlendColor(color, layer, pixel);
+  const p = pixel * 4;
+  image.data[p] = output[0];
+  image.data[p + 1] = output[1];
+  image.data[p + 2] = output[2];
   image.data[p + 3] = 255;
+  layerData[pixel] = layer;
 }
 
 function clearScreen() {
   const color = gbaColor(u16[PAL >> 1]);
   for (let y = 0; y < HEIGHT; y++) {
-    for (let x = 0; x < WIDTH; x++) putPixel(x, y, color);
+    for (let x = 0; x < WIDTH; x++) putPixel(x, y, color, 0x20);
   }
 }
 
@@ -73,6 +104,7 @@ function renderBitmapMode3() {
     image.data[p + 1] = g;
     image.data[p + 2] = b;
     image.data[p + 3] = 255;
+    layerData[i] = 0x04;
   }
 }
 
@@ -86,6 +118,7 @@ function renderBitmapMode4(dispcnt) {
     image.data[p + 1] = g;
     image.data[p + 2] = b;
     image.data[p + 3] = 255;
+    layerData[i] = 0x04;
   }
 }
 
@@ -186,10 +219,11 @@ function bgLayersForMode(dispcnt) {
 
 function renderBgLayer(bg, type) {
   const pixel = type === 'affine' ? affineBgPixel : textBgPixel;
+  const layer = 1 << bg;
   for (let y = 0; y < HEIGHT; y++) {
     for (let x = 0; x < WIDTH; x++) {
       const color = pixel(bg, x, y);
-      if (color) putPixel(x, y, color);
+      if (color) putPixel(x, y, color, layer);
     }
   }
 }
@@ -245,7 +279,7 @@ function renderSprites(dispcnt, priority = null) {
         }
         if (!colorIndex) continue;
         const palOffset = color256 ? colorIndex : palette * 16 + colorIndex;
-        putPixel(ox + x, oy + y, gbaColor(u16[(PAL >> 1) + 0x100 + palOffset]));
+        putPixel(ox + x, oy + y, gbaColor(u16[(PAL >> 1) + 0x100 + palOffset]), 0x10);
       }
     }
   }
@@ -397,7 +431,7 @@ function importsFor(module) {
     env[item.name] = (...args) => {
       switch (item.name) {
         case 'CpuSet': return copy(args[0], args[1], args[2] & 0x1fffff, (args[2] >>> 26) & 1 ? 4 : 2, (args[2] >>> 24) & 1);
-        case 'CpuFastSet': return copy(args[0], args[1], (args[2] & 0x1fffff) * 8, 4, (args[2] >>> 24) & 1);
+        case 'CpuFastSet': return copy(args[0], args[1], args[2] & 0x1fffff, 4, (args[2] >>> 24) & 1);
         case 'LZ77UnCompWram':
         case 'LZ77UnCompVram': return lz77(args[0], args[1]);
         case 'RLUnCompWram':

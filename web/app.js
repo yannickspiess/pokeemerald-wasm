@@ -299,6 +299,25 @@ function bgLayersForMode(dispcnt) {
   }));
 }
 
+function objTileOffset(tileBase, tileX, tileY, width, color256, mapping1d) {
+  return mapping1d
+    ? tileBase + tileY * (color256 ? width >> 2 : width >> 3) + tileX * (color256 ? 2 : 1)
+    : tileBase + tileY * 32 + tileX * (color256 ? 2 : 1);
+}
+
+function objPixel(tileBase, x, y, width, color256, palette, mapping1d) {
+  const tileOffset = objTileOffset(tileBase, x >> 3, y >> 3, width, color256, mapping1d);
+  let colorIndex;
+  if (color256) colorIndex = u8[VRAM + 0x10000 + tileOffset * 32 + (y & 7) * 8 + (x & 7)];
+  else {
+    const packed = u8[VRAM + 0x10000 + tileOffset * 32 + (y & 7) * 4 + ((x & 7) >> 1)];
+    colorIndex = x & 1 ? packed >> 4 : packed & 15;
+  }
+  if (!colorIndex) return null;
+  const palOffset = color256 ? colorIndex : palette * 16 + colorIndex;
+  return gbaColor(u16[(PAL >> 1) + 0x100 + palOffset]);
+}
+
 function renderBgLayer(bg, type) {
   const pixel = type === 'affine' ? affineBgPixel : textBgPixel;
   const layer = 1 << bg;
@@ -331,7 +350,9 @@ function renderSprites(dispcnt, priority = null) {
     const a0 = u16[base];
     const a1 = u16[base + 1];
     const a2 = u16[base + 2];
-    if (a0 & 0x0200) continue;
+    const affineMode = (a0 >> 8) & 3;
+    const affine = affineMode & 1;
+    if (!affine && (a0 & 0x0200)) continue;
     const shape = (a0 >> 14) & 3;
     if (shape === 3) continue;
     const [w, h] = sizes[shape][(a1 >> 14) & 3];
@@ -344,24 +365,40 @@ function renderSprites(dispcnt, priority = null) {
     let oy = a0 & 255;
     if (ox > 240) ox -= 512;
     if (oy > 160) oy -= 256;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const px = a1 & 0x1000 ? w - 1 - x : x;
-        const py = a1 & 0x2000 ? h - 1 - y : y;
-        const tileX = px >> 3;
-        const tileY = py >> 3;
-        const tileOffset = mapping1d
-          ? tileBase + tileY * (color256 ? w >> 2 : w >> 3) + tileX * (color256 ? 2 : 1)
-          : tileBase + tileY * 32 + tileX * (color256 ? 2 : 1);
-        let colorIndex;
-        if (color256) colorIndex = u8[VRAM + 0x10000 + tileOffset * 32 + (py & 7) * 8 + (px & 7)];
-        else {
-          const packed = u8[VRAM + 0x10000 + tileOffset * 32 + (py & 7) * 4 + ((px & 7) >> 1)];
-          colorIndex = px & 1 ? packed >> 4 : packed & 15;
+
+    if (affine) {
+      const matrix = (a1 >> 9) & 31;
+      const matrixBase = (OAM >> 1) + matrix * 16;
+      const pa = signed16(u16[matrixBase + 3]);
+      const pb = signed16(u16[matrixBase + 7]);
+      const pc = signed16(u16[matrixBase + 11]);
+      const pd = signed16(u16[matrixBase + 15]);
+      const drawW = affineMode === 3 ? w * 2 : w;
+      const drawH = affineMode === 3 ? h * 2 : h;
+      const drawCx = drawW / 2;
+      const drawCy = drawH / 2;
+      const texCx = w / 2;
+      const texCy = h / 2;
+
+      for (let y = 0; y < drawH; y++) {
+        for (let x = 0; x < drawW; x++) {
+          const dx = x - drawCx;
+          const dy = y - drawCy;
+          const px = ((pa * dx + pb * dy) >> 8) + texCx;
+          const py = ((pc * dx + pd * dy) >> 8) + texCy;
+          if (px < 0 || py < 0 || px >= w || py >= h) continue;
+          const color = objPixel(tileBase, px, py, w, color256, palette, mapping1d);
+          if (color) putPixel(ox + x, oy + y, color, 0x10);
         }
-        if (!colorIndex) continue;
-        const palOffset = color256 ? colorIndex : palette * 16 + colorIndex;
-        putPixel(ox + x, oy + y, gbaColor(u16[(PAL >> 1) + 0x100 + palOffset]), 0x10);
+      }
+    } else {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const px = a1 & 0x1000 ? w - 1 - x : x;
+          const py = a1 & 0x2000 ? h - 1 - y : y;
+          const color = objPixel(tileBase, px, py, w, color256, palette, mapping1d);
+          if (color) putPixel(ox + x, oy + y, color, 0x10);
+        }
       }
     }
   }

@@ -16,6 +16,7 @@ const buttons = {
   b: 1 << 1,
   select: 1 << 2,
   start: 1 << 3,
+  enter: (1 << 0) | (1 << 3),
   right: 1 << 4,
   left: 1 << 5,
   up: 1 << 6,
@@ -25,7 +26,7 @@ const buttons = {
 };
 
 const keyMap = new Map([
-  ['KeyZ', 'a'], ['KeyX', 'b'], ['Backspace', 'select'], ['Enter', 'start'],
+  ['KeyZ', 'a'], ['KeyX', 'b'], ['Backspace', 'select'], ['Enter', 'enter'],
   ['ArrowRight', 'right'], ['ArrowLeft', 'left'], ['ArrowUp', 'up'], ['ArrowDown', 'down'],
   ['KeyS', 'r'], ['KeyA', 'l'],
 ]);

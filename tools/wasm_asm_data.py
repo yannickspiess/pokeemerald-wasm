@@ -306,6 +306,43 @@ def expand_event_macro(
 
 
 def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, int], macros: Dict[str, AsmMacro]) -> Optional[List[str]]:
+    def is_var_id(value: str) -> bool:
+        try:
+            parsed = parse_int(value, constants)
+        except Exception:
+            return False
+        return (
+            constants.get("VARS_START", 0x4000) <= parsed <= constants.get("VARS_END", 0x40FF)
+            or constants.get("SPECIAL_VARS_START", 0x8000) <= parsed <= constants.get("SPECIAL_VARS_END", 0x8015)
+        )
+
+    def compare_lines(var: str, value: str) -> List[str]:
+        if is_var_id(value):
+            return [
+                f".byte {parse_int('SCR_OP_COMPARE_VAR_TO_VAR', constants)}",
+                f".2byte {var}",
+                f".2byte {value}",
+            ]
+        return [
+            f".byte {parse_int('SCR_OP_COMPARE_VAR_TO_VALUE', constants)}",
+            f".2byte {var}",
+            f".2byte {value}",
+        ]
+
+    def conditional_lines(command: str, condition: int, args: List[str]) -> List[str]:
+        opcode = "SCR_OP_CALL_IF" if command == "call" else "SCR_OP_GOTO_IF"
+        if len(args) == 1:
+            return [f".byte {parse_int(opcode, constants)}", f".byte {condition}", f".4byte {args[0]}"]
+        if len(args) == 3:
+            var, value, destination = args
+            return [
+                *compare_lines(var, value),
+                f".byte {parse_int(opcode, constants)}",
+                f".byte {condition}",
+                f".4byte {destination}",
+            ]
+        raise ValueError(f"unsupported {command}_if arguments: {args}")
+
     def special_id(name: str) -> int:
         if name.startswith("SPECIAL_"):
             return parse_int(name, constants)
@@ -402,6 +439,12 @@ def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, i
         condition, destination = split_args(stripped[len("call_if "):])
         return [f".byte {parse_int('SCR_OP_CALL_IF', constants)}", f".byte {condition}", f".4byte {destination}"]
 
+    shorthand = re.match(r"^(goto|call)_if_(lt|eq|gt|le|ge|ne)\s+(.+)$", stripped)
+    if shorthand:
+        command, condition_name, args_text = shorthand.groups()
+        condition = {"lt": 0, "eq": 1, "gt": 2, "le": 3, "ge": 4, "ne": 5}[condition_name]
+        return conditional_lines(command, condition, split_args(args_text))
+
     if stripped.startswith("call_if_unset "):
         flag, destination = split_args(stripped[len("call_if_unset "):])
         return [
@@ -417,17 +460,6 @@ def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, i
         return [
             f".byte {parse_int('SCR_OP_CHECKFLAG', constants)}",
             f".2byte {flag}",
-            f".byte {parse_int('SCR_OP_CALL_IF', constants)}",
-            ".byte 1",
-            f".4byte {destination}",
-        ]
-
-    if stripped.startswith("call_if_eq "):
-        var, value, destination = split_args(stripped[len("call_if_eq "):])
-        return [
-            f".byte {parse_int('SCR_OP_COMPARE_VAR_TO_VALUE', constants)}",
-            f".2byte {var}",
-            f".2byte {value}",
             f".byte {parse_int('SCR_OP_CALL_IF', constants)}",
             ".byte 1",
             f".4byte {destination}",
@@ -450,17 +482,6 @@ def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, i
             f".2byte {flag}",
             f".byte {parse_int('SCR_OP_GOTO_IF', constants)}",
             ".byte 0",
-            f".4byte {destination}",
-        ]
-
-    if stripped.startswith("goto_if_ne "):
-        var, value, destination = split_args(stripped[len("goto_if_ne "):])
-        return [
-            f".byte {parse_int('SCR_OP_COMPARE_VAR_TO_VALUE', constants)}",
-            f".2byte {var}",
-            f".2byte {value}",
-            f".byte {parse_int('SCR_OP_GOTO_IF', constants)}",
-            ".byte 5",
             f".4byte {destination}",
         ]
 
@@ -520,17 +541,6 @@ def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, i
 
     if stripped == "waitfanfare":
         return [f".byte {parse_int('SCR_OP_WAITFANFARE', constants)}"]
-
-    if stripped.startswith("goto_if_eq "):
-        var, value, destination = split_args(stripped[len("goto_if_eq "):])
-        return [
-            f".byte {parse_int('SCR_OP_COMPARE_VAR_TO_VALUE', constants)}",
-            f".2byte {var}",
-            f".2byte {value}",
-            f".byte {parse_int('SCR_OP_GOTO_IF', constants)}",
-            ".byte 1",
-            f".4byte {destination}",
-        ]
 
     if stripped.startswith("setdynamicwarp "):
         args = split_args(stripped[len("setdynamicwarp "):])

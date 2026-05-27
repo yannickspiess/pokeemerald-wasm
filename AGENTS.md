@@ -54,6 +54,8 @@ source tree and behavior as much as possible.
   data, commands, assets, or runtime paths. When a bug presents in one example,
   check for the underlying pattern and verify at least one representative path
   instead of hardcoding that example.
+- After each verified change, commit the completed work before starting the next
+  fix or feature, unless the user explicitly asks to keep changes uncommitted.
 
 ## Build And Verification
 

@@ -210,7 +210,14 @@ C_SRCS_IN := $(wildcard $(C_SUBDIR)/*.c $(C_SUBDIR)/*/*.c $(C_SUBDIR)/*/*/*.c)
 C_SRCS := $(foreach src,$(C_SRCS_IN),$(if $(findstring .inc.c,$(src)),,$(src)))
 C_OBJS := $(patsubst $(C_SUBDIR)/%.c,$(C_BUILDDIR)/%.o,$(C_SRCS))
 WASM_C_OBJS := $(patsubst $(C_SUBDIR)/%.c,$(WASM_OBJ_DIR)/%.o,$(C_SRCS))
-WASM_DATA_OBJS := $(WASM_OBJ_DIR)/maps.o $(WASM_OBJ_DIR)/map_events.o $(WASM_OBJ_DIR)/event_scripts.o
+WASM_DATA_ASM_SRCS := \
+	$(DATA_ASM_SUBDIR)/maps.s \
+	$(DATA_ASM_SUBDIR)/map_events.s \
+	$(DATA_ASM_SUBDIR)/event_scripts.s \
+	$(DATA_ASM_SUBDIR)/battle_scripts_1.s \
+	$(DATA_ASM_SUBDIR)/battle_scripts_2.s \
+	$(DATA_ASM_SUBDIR)/battle_ai_scripts.s
+WASM_DATA_OBJS := $(patsubst $(DATA_ASM_SUBDIR)/%.s,$(WASM_OBJ_DIR)/%.o,$(WASM_DATA_ASM_SRCS))
 
 C_ASM_SRCS := $(wildcard $(C_SUBDIR)/*.s $(C_SUBDIR)/*/*.s $(C_SUBDIR)/*/*/*.s)
 C_ASM_OBJS := $(patsubst $(C_SUBDIR)/%.s,$(C_BUILDDIR)/%.o,$(C_ASM_SRCS))
@@ -247,28 +254,18 @@ wasm-assets: $(GFX)
 
 $(WASM_C_OBJS): | generated wasm-assets
 
-$(WASM): $(WASM_C_OBJS) $(WASM_DATA_OBJS)
+$(WASM): Makefile $(WASM_C_OBJS) $(WASM_DATA_OBJS)
 	@test -n "$(WASM_LD)" || { echo "wasm-ld not found; set WASM_LD=/path/to/wasm-ld"; exit 1; }
-	$(WASM_LD) --no-entry --allow-undefined --initial-memory=268435456 --max-memory=268435456 --export=AgbMain --export=WasmRunFrame --export-all -o $@ $^
+	$(WASM_LD) --no-entry --allow-undefined --initial-memory=268435456 --max-memory=268435456 --export=AgbMain --export=WasmRunFrame --export-all -o $@ $(filter %.o,$^)
 
 $(WASM_OBJ_DIR)/%.o: $(C_SUBDIR)/%.c
 	@mkdir -p $(dir $@)
 	$(WASM_CC) --target=wasm32-unknown-unknown -DMODERN=1 -DWASM=1 -I include/wasm -I include -iquote include -E $< | $(PREPROC) -i -g $(ASSETS_DIR_NAME) $< charmap.txt | $(WASM_CC) --target=wasm32-unknown-unknown -x c -O2 -Wno-incompatible-library-redeclaration -Wno-unknown-attributes -Wno-ignored-attributes -Wno-parentheses -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-builtin-requires-header -Wno-gnu-alignof-expression -Wno-unknown-escape-sequence -Wno-excess-initializers -c - -o $@
 
-$(WASM_OBJ_DIR)/maps.o: data/maps.s tools/wasm_asm_data.py | generated
+$(WASM_OBJ_DIR)/%.o: $(DATA_ASM_SUBDIR)/%.s tools/wasm_asm_data.py | generated
 	@mkdir -p $(dir $@) $(WASM_BUILD_DIR)
-	uv run python tools/wasm_asm_data.py $< $(WASM_BUILD_DIR)/maps.wasm.s
-	$(WASM_CC) --target=wasm32-unknown-unknown -c $(WASM_BUILD_DIR)/maps.wasm.s -o $@
-
-$(WASM_OBJ_DIR)/map_events.o: data/map_events.s tools/wasm_asm_data.py | generated
-	@mkdir -p $(dir $@) $(WASM_BUILD_DIR)
-	uv run python tools/wasm_asm_data.py $< $(WASM_BUILD_DIR)/map_events.wasm.s
-	$(WASM_CC) --target=wasm32-unknown-unknown -c $(WASM_BUILD_DIR)/map_events.wasm.s -o $@
-
-$(WASM_OBJ_DIR)/event_scripts.o: data/event_scripts.s tools/wasm_asm_data.py | generated
-	@mkdir -p $(dir $@) $(WASM_BUILD_DIR)
-	uv run python tools/wasm_asm_data.py $< $(WASM_BUILD_DIR)/event_scripts.wasm.s
-	$(WASM_CC) --target=wasm32-unknown-unknown -c $(WASM_BUILD_DIR)/event_scripts.wasm.s -o $@
+	uv run python tools/wasm_asm_data.py $< $(WASM_BUILD_DIR)/$*.wasm.s
+	$(WASM_CC) --target=wasm32-unknown-unknown -c $(WASM_BUILD_DIR)/$*.wasm.s -o $@
 
 clean-wasm:
 	rm -rf $(WASM_BUILD_DIR)

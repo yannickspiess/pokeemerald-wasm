@@ -28,6 +28,8 @@ tools/compresSmol/
 *.bat
 *.dump
 *.sa*
+*.py[cod]
+__pycache__/
 Thumbs.db
 build/
 .DS_Store

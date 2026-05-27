@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Tuple
 ROOT = Path(__file__).resolve().parents[1]
 LABEL_RE = re.compile(r"^([A-Za-z_.$][\w.$]*)(::?)\s*(.*)$")
 ASSIGN_RE = re.compile(r"^([A-Za-z_.$][\w.$]*)\s*=\s*(.+)$")
+INCLUDE_RE = re.compile(r'^\s*\.include\s+"([^"]+)"')
 
 
 class AsmMacro:
@@ -180,9 +181,39 @@ def parse_macro_args(name: str, text: str, macros: Dict[str, "AsmMacro"]) -> Lis
     return text.split()
 
 
-def load_event_macros() -> Dict[str, AsmMacro]:
+def collect_macro_includes(source: Path) -> List[Path]:
+    paths: List[Path] = []
+    seen = set()
+
+    def visit(path: Path) -> None:
+        path = path if path.is_absolute() else ROOT / path
+        path = path.resolve()
+        if path in seen or not path.exists():
+            return
+        seen.add(path)
+
+        for raw in path.read_text().splitlines():
+            match = INCLUDE_RE.match(strip_at_comment(raw))
+            if not match:
+                continue
+            include = match.group(1)
+            include_path = (ROOT / include).resolve()
+            if include == "asm/macros.inc" or include_path.is_relative_to(ROOT / "asm/macros"):
+                visit(include_path)
+
+        if path == (ROOT / "asm/macros.inc").resolve() or path.is_relative_to(ROOT / "asm/macros"):
+            paths.append(path)
+
+    visit(source)
+    return paths
+
+
+def load_event_macros(source: Optional[Path] = None) -> Dict[str, AsmMacro]:
     macros: Dict[str, AsmMacro] = {}
-    for path in sorted((ROOT / "asm/macros").glob("**/*.inc")):
+    paths = collect_macro_includes(source) if source is not None else []
+    if not paths:
+        paths = sorted((ROOT / "asm/macros").glob("**/*.inc"))
+    for path in paths:
         current_name = None
         current_params: List[Tuple[str, Optional[str]]] = []
         current_body: List[str] = []
@@ -233,6 +264,7 @@ def expand_event_macro(
     args: List[str],
     macros: Dict[str, AsmMacro],
     constants: Dict[str, int],
+    counters: Optional[Dict[str, int]] = None,
     depth: int = 0,
 ) -> Optional[List[str]]:
     if depth > 8 or name not in macros:
@@ -297,7 +329,8 @@ def expand_event_macro(
                 else:
                     out.extend([f".byte {warp_args[1]}", f".2byte {warp_args[2]}", f".2byte {warp_args[3]}"])
                 continue
-        nested = expand_event_macro(nested_name, parse_macro_args(nested_name, nested_args, macros), macros, constants, depth + 1)
+
+        nested = expand_macro(expanded, constants, counters if counters is not None else {}, macros, depth + 1)
         if nested is None:
             return None
         out.extend(nested)
@@ -305,7 +338,7 @@ def expand_event_macro(
     return out
 
 
-def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, int], macros: Dict[str, AsmMacro]) -> Optional[List[str]]:
+def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, int], macros: Dict[str, AsmMacro], macro_depth: int = 0) -> Optional[List[str]]:
     def is_var_id(value: str) -> bool:
         try:
             parsed = parse_int(value, constants)
@@ -352,6 +385,17 @@ def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, i
         if name.startswith("SPECIAL_"):
             name = name[len("SPECIAL_"):]
         return bool(parse_int(f"SPECIAL_WAITSTATE_{name}", constants))
+
+    def expand_loaded_macro() -> Optional[List[str]]:
+        name, _, args = stripped.partition(" ")
+        return expand_event_macro(name, parse_macro_args(name, args, macros), macros, constants, counters, macro_depth)
+
+    macro_name = stripped.split(" ", 1)[0]
+    # Native macro definitions own command names that collide across script engines.
+    if macro_name in macros and (stripped == macro_name or macro_name in {"end", "return", "call", "goto"}):
+        expanded = expand_loaded_macro()
+        if expanded is not None:
+            return expanded
 
     if stripped.startswith("script_cmd_table_entry "):
         if not constants.get("ALLOCATE_SCRIPT_CMD_TABLE", 0):
@@ -791,8 +835,7 @@ def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, i
         map_value = parse_int(stripped[len("map "):], constants)
         return [f".byte {map_value >> 8}", f".byte {map_value & 0xFF}"]
 
-    name, _, args = stripped.partition(" ")
-    expanded = expand_event_macro(name, parse_macro_args(name, args, macros), macros, constants)
+    expanded = expand_loaded_macro()
     if expanded is not None:
         return expanded
 
@@ -814,12 +857,12 @@ def strip_at_comment(line: str) -> str:
     return line.rstrip()
 
 
-def convert(text: str, emit_sizes: bool = True) -> str:
+def convert(text: str, source: Optional[Path] = None, emit_sizes: bool = True) -> str:
     out = []
     constants = load_script_command_constants()
     script_command_functions = set(load_script_command_functions())
     constants.update(load_special_constants())
-    macros = load_event_macros()
+    macros = load_event_macros(source)
     constants.update(load_movement_constants())
     constants.update(load_map_constants())
     constants.update({
@@ -983,7 +1026,7 @@ def main() -> None:
     source = Path(sys.argv[1])
     output = Path(sys.argv[2])
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(convert(preprocess(source)))
+    output.write_text(convert(preprocess(source), source))
 
 
 if __name__ == "__main__":

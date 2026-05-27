@@ -41,15 +41,39 @@ def load_script_command_functions() -> List[str]:
 def load_special_constants() -> Dict[str, int]:
     constants = {}
     value = 0
+    return_values = load_special_return_values()
     for line in (ROOT / "data/specials.inc").read_text().splitlines():
         line = strip_at_comment(line).strip()
         if not line.startswith("def_special "):
             continue
-        name = split_args(line[len("def_special "):])[0]
+        args = split_args(line[len("def_special "):])
+        name = args[0]
         constants[f"SPECIAL_{name}"] = value
-        constants[f"SPECIAL_WAITSTATE_{name}"] = 0
+        constants[f"SPECIAL_WAITSTATE_{name}"] = int("waitstate=1" in args)
+        constants[f"SPECIAL_RETURNS_VALUE_{name}"] = int(return_values.get(name, True))
         value += 1
     return constants
+
+
+def load_special_return_values() -> Dict[str, bool]:
+    names = []
+    for line in (ROOT / "data/specials.inc").read_text().splitlines():
+        line = strip_at_comment(line).strip()
+        if line.startswith("def_special "):
+            names.append(split_args(line[len("def_special "):])[0])
+
+    wanted = set(names)
+    pattern = re.compile(r"^([A-Za-z_][\w\s\*]*?)\s+([A-Za-z_]\w*)\s*\([^;{]*\)\s*(?:\{|;)", re.MULTILINE)
+    returns: Dict[str, bool] = {}
+    for path in list((ROOT / "src").glob("*.c")) + list((ROOT / "include").glob("*.h")):
+        for match in pattern.finditer(path.read_text(errors="ignore")):
+            return_type, name = match.groups()
+            if name not in wanted or name in returns:
+                continue
+            tokens = return_type.replace("*", " ").split()
+            tokens = [token for token in tokens if token not in {"static", "UNUSED", "const"}]
+            returns[name] = tokens != ["void"]
+    return returns
 
 
 def load_movement_constants() -> Dict[str, int]:
@@ -282,6 +306,16 @@ def expand_event_macro(
 
 
 def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, int], macros: Dict[str, AsmMacro]) -> Optional[List[str]]:
+    def special_id(name: str) -> int:
+        if name.startswith("SPECIAL_"):
+            return parse_int(name, constants)
+        return parse_int(f"SPECIAL_{name}", constants)
+
+    def special_waitstate(name: str) -> bool:
+        if name.startswith("SPECIAL_"):
+            name = name[len("SPECIAL_"):]
+        return bool(parse_int(f"SPECIAL_WAITSTATE_{name}", constants))
+
     if stripped.startswith("script_cmd_table_entry "):
         if not constants.get("ALLOCATE_SCRIPT_CMD_TABLE", 0):
             return []
@@ -295,7 +329,9 @@ def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, i
         if not constants.get("ALLOCATE_SPECIAL_TABLE", 0):
             return []
         special = split_args(stripped[len("def_special "):])[0]
-        return [f".functype {special} () -> (i32)", f".4byte {special}"]
+        counters.setdefault("special_wrappers", []).append((special, bool(constants.get(f"SPECIAL_RETURNS_VALUE_{special}", 1))))
+        wrapper = f"WasmSpecial_{special}"
+        return [f".functype {wrapper} () -> (i32)", f".4byte {wrapper}"]
 
     if stripped.startswith("map_script "):
         script_type, script = split_args(stripped[len("map_script "):])
@@ -462,11 +498,17 @@ def expand_macro(stripped: str, constants: Dict[str, int], counters: Dict[str, i
 
     if stripped.startswith("specialvar "):
         var, special = split_args(stripped[len("specialvar "):])[:2]
-        return [f".byte {parse_int('SCR_OP_SPECIALVAR', constants)}", f".2byte {var}", f".2byte {special}"]
+        lines = [f".byte {parse_int('SCR_OP_SPECIALVAR', constants)}", f".2byte {var}", f".2byte {special_id(special)}"]
+        if special_waitstate(special):
+            lines.append(f".byte {parse_int('SCR_OP_WAITSTATE', constants)}")
+        return lines
 
     if stripped.startswith("special "):
         special = stripped[len("special "):].strip()
-        return [f".byte {parse_int('SCR_OP_SPECIAL', constants)}", f".2byte {special}"]
+        lines = [f".byte {parse_int('SCR_OP_SPECIAL', constants)}", f".2byte {special_id(special)}"]
+        if special_waitstate(special):
+            lines.append(f".byte {parse_int('SCR_OP_WAITSTATE', constants)}")
+        return lines
 
     if stripped.startswith("playse "):
         song = stripped[len("playse "):].strip()
@@ -901,6 +943,27 @@ def convert(text: str, emit_sizes: bool = True) -> str:
         out.append(stripped)
 
     close_label()
+    special_wrappers = counters.get("special_wrappers", [])
+    if special_wrappers:
+        emitted_wrappers = set()
+        for special, returns_value in special_wrappers:
+            if special in emitted_wrappers:
+                continue
+            emitted_wrappers.add(special)
+            wrapper = f"WasmSpecial_{special}"
+            return_type = "i32" if returns_value else ""
+            out.extend([
+                f'.section .text.{wrapper},"",@',
+                f".functype {special} () -> ({return_type})",
+                f".globl {wrapper}",
+                f".type {wrapper},@function",
+                f"{wrapper}:",
+                f".functype {wrapper} () -> (i32)",
+                f"call {special}",
+            ])
+            if not returns_value:
+                out.append("i32.const 0")
+            out.append("end_function")
     return "\n".join(out) + "\n"
 
 

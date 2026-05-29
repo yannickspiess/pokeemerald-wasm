@@ -68,7 +68,7 @@ node tools/wasm_replay.mjs path/to/events.txt
 ```
 
 The tool runs `make wasm`, starts `web/server.mjs`, opens `/?automate=1`, applies
-input events at exact emulated frame numbers, recreates the fixed
+input events at exact emulated game frame numbers, recreates the fixed
 `wasm-replay-output/` folder, and writes:
 
 - `screenshots/*.png` for requested screenshot frames
@@ -78,7 +78,8 @@ input events at exact emulated frame numbers, recreates the fixed
 
 Pass `--no-build` to reuse an existing `build/wasm/pokeemerald.wasm`. Set
 `CHROME_BIN=/path/to/chrome` if Chrome/Chromium is not in a standard location.
-The replay event file format is line oriented:
+The replay event file format is line oriented. Frame numbers are calls to
+`WasmRunFrame()` / emulated game frames, not browser display frames:
 
 ```text
 0 screenshot boot
@@ -88,7 +89,9 @@ The replay event file format is line oriented:
 ```
 
 Valid buttons are `a`, `b`, `select`, `start`, `right`, `left`, `up`, `down`,
-`r`, and `l`. `#` starts a comment.
+`r`, and `l`. `#` starts a comment. Keep reusable replay inputs in
+`tools/wasm_replays/` and add screenshot events at meaningful route checkpoints
+so future runs show where the automation is.
 
 ## Build And Verification
 

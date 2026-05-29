@@ -11,6 +11,7 @@ const defaultOutputDir = 'wasm-replay-output';
 
 function usage() {
   console.error('usage: node tools/wasm_replay.mjs <events.txt> [output-dir] [--no-build] [--keep-browser]');
+  console.error('event frame numbers are emulated game frames, not display frames');
   process.exit(2);
 }
 
@@ -247,7 +248,7 @@ async function main() {
         screenshots.push(await saveScreenshot(cdp, outputDir, event));
       }
     }
-    await writeFile(resolve(outputDir, 'summary.json'), JSON.stringify({ input: basename(inputPath), screenshots, errors }, null, 2));
+    await writeFile(resolve(outputDir, 'summary.json'), JSON.stringify({ input: basename(inputPath), frameUnit: 'emulated_game_frame', screenshots, errors }, null, 2));
   } catch (error) {
     errors.push(error.stack || String(error));
     process.exitCode = 1;

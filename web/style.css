@@ -27,7 +27,6 @@ body {
   width: min(100vmin, 100vw);
   height: min(100vmin, 100vh);
   padding: clamp(10px, 2.2vmin, 24px);
-  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   gap: clamp(8px, 1.6vmin, 18px);
@@ -35,17 +34,24 @@ body {
   align-items: center;
 }
 
-.github-link {
-  width: clamp(28px, 5vmin, 44px);
-  height: clamp(28px, 5vmin, 44px);
-  position: absolute;
-  top: clamp(10px, 2.2vmin, 24px);
-  right: clamp(10px, 2.2vmin, 24px);
+.masthead {
   display: grid;
-  place-items: center;
+  justify-items: center;
+  gap: clamp(4px, .8vmin, 9px);
+}
+
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .42em;
   color: #fff3bf;
-  border-radius: 50%;
-  opacity: .82;
+  font-size: clamp(13px, 2.2vmin, 18px);
+  font-weight: 900;
+  line-height: 1;
+  text-decoration: underline;
+  text-decoration-thickness: .11em;
+  text-underline-offset: .22em;
+  opacity: .86;
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
@@ -56,8 +62,8 @@ body {
 }
 
 .github-link svg {
-  width: 100%;
-  height: 100%;
+  width: 1.18em;
+  height: 1.18em;
   display: block;
   fill: currentColor;
   filter: drop-shadow(0 .12em 0 #00000040);

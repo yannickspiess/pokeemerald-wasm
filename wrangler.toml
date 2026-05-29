@@ -1,4 +1,5 @@
 name = "pokeemerald-wasm"
+account_id = "9fc9d21b2d12f99cdb4da40d8d127877"
 compatibility_date = "2026-05-29"
 workers_dev = false
 preview_urls = false
@@ -9,7 +10,7 @@ watch_dir = ["web", "src", "include", "data", "graphics", "sound", "tools", "Mak
 
 [assets]
 directory = "./dist/cloudflare"
-html_handling = "none"
+html_handling = "auto-trailing-slash"
 not_found_handling = "none"
 
 [[routes]]

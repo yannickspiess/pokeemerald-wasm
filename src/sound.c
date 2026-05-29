@@ -605,11 +605,15 @@ void SE12PanpotControl(s8 pan)
 
 bool8 IsSEPlaying(void)
 {
+#if WASM
+    return FALSE;
+#else
     if ((gMPlayInfo_SE1.status & MUSICPLAYER_STATUS_PAUSE) && (gMPlayInfo_SE2.status & MUSICPLAYER_STATUS_PAUSE))
         return FALSE;
     if (!(gMPlayInfo_SE1.status & MUSICPLAYER_STATUS_TRACK) && !(gMPlayInfo_SE2.status & MUSICPLAYER_STATUS_TRACK))
         return FALSE;
     return TRUE;
+#endif
 }
 
 bool8 IsBGMPlaying(void)
@@ -623,9 +627,13 @@ bool8 IsBGMPlaying(void)
 
 bool8 IsSpecialSEPlaying(void)
 {
+#if WASM
+    return FALSE;
+#else
     if (gMPlayInfo_SE3.status & MUSICPLAYER_STATUS_PAUSE)
         return FALSE;
     if (!(gMPlayInfo_SE3.status & MUSICPLAYER_STATUS_TRACK))
         return FALSE;
     return TRUE;
+#endif
 }

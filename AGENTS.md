@@ -57,6 +57,38 @@ source tree and behavior as much as possible.
 - After each verified change, commit the completed work before starting the next
   fix or feature, unless the user explicitly asks to keep changes uncommitted.
 
+## Reproducible WASM Replay
+
+Use `tools/wasm_replay.mjs` to run the normal `web/` frontend in a headless
+Chrome/Chromium instance without the animation-frame cap and save deterministic
+canvas screenshots, browser console output, and errors.
+
+```sh
+node tools/wasm_replay.mjs path/to/events.txt path/to/output-dir
+```
+
+The tool runs `make wasm`, starts `web/server.mjs`, opens `/?automate=1`, applies
+input events at exact emulated frame numbers, and writes:
+
+- `screenshots/*.png` for requested screenshot frames
+- `console.log` for server, browser, and page console messages
+- `errors.log` for CLI or page exceptions
+- `events.json` and `summary.json` for run metadata
+
+Pass `--no-build` to reuse an existing `build/wasm/pokeemerald.wasm`. Set
+`CHROME_BIN=/path/to/chrome` if Chrome/Chromium is not in a standard location.
+The replay event file format is line oriented:
+
+```text
+0 screenshot boot
+120 button start on
+124 button start off
+240 screenshot title-screen
+```
+
+Valid buttons are `a`, `b`, `select`, `start`, `right`, `left`, `up`, `down`,
+`r`, and `l`. `#` starts a comment.
+
 ## Build And Verification
 
 For WASM changes, run:

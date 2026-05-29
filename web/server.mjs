@@ -3,7 +3,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { createServer } from 'node:http';
 
 const root = resolve(process.cwd());
-const port = Number(process.env.PORT || 8000);
+const requestedPort = Number(process.env.PORT || 8000);
 const types = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.js', 'text/javascript; charset=utf-8'],
@@ -12,7 +12,7 @@ const types = new Map([
 ]);
 
 function fileFor(url) {
-  const pathname = new URL(url, `http://localhost:${port}`).pathname;
+  const pathname = new URL(url, `http://localhost:${requestedPort}`).pathname;
   const relative = pathname === '/' ? 'web/index.html' : pathname.slice(1);
   const file = resolve(root, normalize(relative));
   return file.startsWith(root) ? file : null;
@@ -30,6 +30,7 @@ createServer((req, res) => {
     'Cache-Control': 'no-store',
   });
   createReadStream(file).pipe(res);
-}).listen(port, () => {
+}).listen(requestedPort, function () {
+  const { port } = this.address();
   console.log(`pokeemerald wasm server: http://localhost:${port}`);
 });

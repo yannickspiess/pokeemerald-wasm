@@ -6,7 +6,9 @@ const VRAM = 0x06000000;
 const OAM = 0x07000000;
 const KEYINPUT = 0x04000130;
 const KEY_MASK = 0x03ff;
-const speedParam = new URLSearchParams(location.search).get('speed');
+const searchParams = new URLSearchParams(location.search);
+const speedParam = searchParams.get('speed');
+const automate = searchParams.get('automate') === '1';
 const MIN_SPEED = 0.1;
 const MAX_SPEED = 10000;
 const MIN_SPEED_EXPONENT = Math.log10(MIN_SPEED);
@@ -53,6 +55,12 @@ let renderedFrames = 0;
 let emulatedFrames = 0;
 let gameFrameAccumulator = 0;
 let speed = 1;
+let currentFrame = 0;
+let automationReady;
+let resolveAutomationReady;
+if (automate) {
+  automationReady = new Promise((resolve) => { resolveAutomationReady = resolve; });
+}
 
 function refreshViews() {
   u8 = new Uint8Array(memory.buffer);
@@ -625,13 +633,19 @@ async function boot() {
   instance = await WebAssembly.instantiate(module, importsFor(module));
   memory = instance.exports.memory;
   window.pokeemerald = { instance, memory, runFrames };
+  if (automate) window.pokeemerald.automation = automationApi();
   refreshViews();
   writeKeys();
   instance.exports.AgbMain();
   statusText = `running — ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MiB wasm`;
   setSpeedFromExponent(speedToExponent(initialSpeed()));
   statusEl.textContent = `${statusText} — Display FPS: 0, Game FPS: 0`;
-  requestAnimationFrame(tick);
+  if (automate) {
+    render();
+    resolveAutomationReady();
+  } else {
+    requestAnimationFrame(tick);
+  }
 }
 
 function updateFps(frameCount) {
@@ -655,9 +669,38 @@ function runFrames(frameCount, keyMask = 0) {
     if (keyMask) u16[KEYINPUT >> 1] = KEY_MASK ^ keyMask;
     else writeKeys();
     instance.exports.WasmRunFrame();
+    currentFrame++;
     stepPendingPresses();
   }
   u16[KEYINPUT >> 1] = KEY_MASK;
+}
+
+function setAutomationButton(name, isPressed) {
+  if (!Object.hasOwn(buttons, name)) throw new Error(`unknown button: ${name}`);
+  pendingPresses.delete(name);
+  if (isPressed) pressed.add(name);
+  else pressed.delete(name);
+  document.querySelectorAll(`[data-key='${name}']`).forEach((el) => el.classList.toggle('pressed', isPressed));
+  writeKeys();
+}
+
+function runToFrame(targetFrame) {
+  if (!Number.isInteger(targetFrame) || targetFrame < currentFrame) {
+    throw new Error(`cannot run from frame ${currentFrame} to ${targetFrame}`);
+  }
+  runFrames(targetFrame - currentFrame);
+  render();
+  return currentFrame;
+}
+
+function automationApi() {
+  return {
+    ready: automationReady,
+    setButton: setAutomationButton,
+    runToFrame,
+    screenshot: () => canvas.toDataURL('image/png'),
+    frame: () => currentFrame,
+  };
 }
 
 function runFramesForTick(elapsedMs) {

@@ -9,7 +9,7 @@ const KEY_MASK = 0x03ff;
 const FLASH_BASE = 0x0e000000;
 const FLASH_SIZE = 128 * 1024;
 const SAVE_STORAGE_KEY = 'pokeemerald.wasm.flash.v1';
-const SAVE_FLUSH_INTERVAL_FRAMES = 1;
+const SAVE_FLUSH_INTERVAL_MS = 1000;
 const searchParams = new URLSearchParams(location.search);
 const speedParam = searchParams.get('speed');
 const automate = searchParams.get('automate') === '1';
@@ -61,7 +61,7 @@ let gameFrameAccumulator = 0;
 let speed = 1;
 let currentFrame = 0;
 let lastSavedFlashHash = 0;
-let lastSaveFlushFrame = 0;
+let lastSaveFlushTime = performance.now();
 let automationReady;
 let resolveAutomationReady;
 if (automate) {
@@ -121,8 +121,9 @@ function loadFlashSave() {
 
 function saveFlashIfChanged(force = false) {
   if (!u8) return;
-  if (!force && currentFrame - lastSaveFlushFrame < SAVE_FLUSH_INTERVAL_FRAMES) return;
-  lastSaveFlushFrame = currentFrame;
+  const now = performance.now();
+  if (!force && now - lastSaveFlushTime < SAVE_FLUSH_INTERVAL_MS) return;
+  lastSaveFlushTime = now;
 
   const flash = flashBytes();
   const hash = hashBytes(flash);
@@ -758,9 +759,9 @@ function runFrames(frameCount, keyMask = 0) {
     instance.exports.WasmRunFrame();
     currentFrame++;
     stepPendingPresses();
-    saveFlashIfChanged();
   }
   u16[KEYINPUT >> 1] = KEY_MASK;
+  saveFlashIfChanged();
 }
 
 function setAutomationButton(name, isPressed) {
@@ -829,8 +830,9 @@ function runFramesForTick(elapsedMs) {
   const start = performance.now();
   let frames = 0;
   while (frames < frameCount && performance.now() - start < FAST_FRAME_BUDGET_MS) {
-    runFrames(1);
-    frames++;
+    const batchSize = Math.min(frameCount - frames, 256);
+    runFrames(batchSize);
+    frames += batchSize;
   }
   return frames;
 }

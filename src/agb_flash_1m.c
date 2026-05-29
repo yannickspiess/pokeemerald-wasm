@@ -13,12 +13,12 @@ static const struct FlashSetupInfo *const sSetupInfos[] =
 u16 IdentifyFlash(void)
 {
 #if WASM
-    ProgramFlashByte = DefaultFlash.programFlashByte;
-    ProgramFlashSector = DefaultFlash.programFlashSector;
-    EraseFlashChip = DefaultFlash.eraseFlashChip;
-    EraseFlashSector = DefaultFlash.eraseFlashSector;
-    WaitForFlashWrite = DefaultFlash.WaitForFlashWrite;
-    gFlashMaxTime = DefaultFlash.maxTime;
+    ProgramFlashByte = ProgramFlashByte_MX;
+    ProgramFlashSector = ProgramFlashSector_MX;
+    EraseFlashChip = EraseFlashChip_MX;
+    EraseFlashSector = EraseFlashSector_MX;
+    WaitForFlashWrite = WaitForFlashWrite_Common;
+    gFlashMaxTime = NULL;
     gFlash = &DefaultFlash.type;
     return 0;
 #else

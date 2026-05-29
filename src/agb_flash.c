@@ -8,6 +8,16 @@ static u16 sSavedIme;
 
 COMMON_DATA u8 gFlashTimeoutFlag = 0;
 COMMON_DATA u8 (*PollFlashStatus)(u8 *) = NULL;
+#if WASM
+COMMON_DATA u16 (*WaitForFlashWrite)(u8 phase, u8 *addr, u8 lastData) = WaitForFlashWrite_Common;
+COMMON_DATA u16 (*ProgramFlashSector)(u16 sectorNum, u8 *src) = ProgramFlashSector_MX;
+COMMON_DATA const struct FlashType *gFlash = &DefaultFlash.type;
+COMMON_DATA u16 (*ProgramFlashByte)(u16 sectorNum, u32 offset, u8 data) = ProgramFlashByte_MX;
+COMMON_DATA u16 gFlashNumRemainingBytes = 0;
+COMMON_DATA u16 (*EraseFlashChip)() = EraseFlashChip_MX;
+COMMON_DATA u16 (*EraseFlashSector)(u16 sectorNum) = EraseFlashSector_MX;
+COMMON_DATA const u16 *gFlashMaxTime = NULL;
+#else
 COMMON_DATA u16 (*WaitForFlashWrite)(u8 phase, u8 *addr, u8 lastData) = NULL;
 COMMON_DATA u16 (*ProgramFlashSector)(u16 sectorNum, u8 *src) = NULL;
 COMMON_DATA const struct FlashType *gFlash = NULL;
@@ -16,6 +26,7 @@ COMMON_DATA u16 gFlashNumRemainingBytes = 0;
 COMMON_DATA u16 (*EraseFlashChip)() = NULL;
 COMMON_DATA u16 (*EraseFlashSector)(u16 sectorNum) = 0;
 COMMON_DATA const u16 *gFlashMaxTime = NULL;
+#endif
 
 void SetReadFlash1(u16 *dest);
 

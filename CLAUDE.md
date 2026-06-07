@@ -31,6 +31,12 @@ make compare       # verify ROM-matching behavior when relevant
   changes), then verify the served page reaches the intended flow — see
   `AGENTS.md` for the headless replay tool if a scripted check is useful.
 - Don't claim a build or behavior works without having actually run it.
+- To launch the game in Chrome with one click, double-click `launch_game.command`
+  in Finder — it builds if needed, starts the local server, and opens the game
+  in a Chrome app window.
+- **Browser automation:** the Claude-in-Chrome MCP is sometimes not connected
+  here. Don't retry it repeatedly — fall back to the Playwright MCP
+  (`mcp__plugin_playwright_playwright__*`) to drive Chrome for verification.
 
 ## Operating Rules
 

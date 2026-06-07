@@ -34,54 +34,8 @@ body {
   align-items: center;
 }
 
-.shell > *,
-.masthead > * {
+.shell > * {
   min-width: 0;
-}
-
-.masthead {
-  display: grid;
-  justify-items: center;
-  gap: clamp(4px, .8vmin, 9px);
-}
-
-.github-link {
-  display: inline-flex;
-  align-items: center;
-  gap: .42em;
-  color: #fff3bf;
-  font-size: clamp(16px, 3vmin, 26px);
-  font-weight: 500;
-  line-height: 1;
-  text-decoration: underline;
-  text-decoration-thickness: .11em;
-  text-underline-offset: .22em;
-  opacity: .86;
-  transition: opacity 120ms ease, transform 120ms ease;
-}
-
-.github-link:hover,
-.github-link:focus-visible {
-  opacity: 1;
-  transform: translateY(-1px);
-}
-
-.github-link svg {
-  width: 1.18em;
-  height: 1.18em;
-  display: block;
-  fill: currentColor;
-  filter: drop-shadow(0 .12em 0 #00000040);
-}
-
-h1 {
-  margin: 0;
-  color: #fff3bf;
-  font-size: clamp(28px, 7vmin, 76px);
-  line-height: .86;
-  letter-spacing: -.075em;
-  text-align: center;
-  text-shadow: 0 .08em 0 #00000040;
 }
 
 .display-panel {
@@ -238,23 +192,6 @@ button.pressed {
     grid-template-rows: auto auto auto auto auto;
     gap: 14px;
     align-content: center;
-  }
-
-  .masthead {
-    gap: 6px;
-  }
-
-  h1 {
-    width: 100%;
-    max-width: 100%;
-    font-size: clamp(28px, 9.5vw, 46px);
-    letter-spacing: -.06em;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .github-link {
-    font-size: clamp(18px, 6vw, 28px);
   }
 
   .display-panel {

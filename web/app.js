@@ -52,6 +52,7 @@ const canvas = document.querySelector('#screen');
 const statusEl = document.querySelector('#status');
 const speedInput = document.querySelector('#speed');
 const speedValue = document.querySelector('#speed-value');
+const loopStatusEl = document.querySelector('#loop-status');
 const ctx = canvas.getContext('2d');
 const image = ctx.createImageData(WIDTH, HEIGHT);
 const layerData = new Uint8Array(WIDTH * HEIGHT);
@@ -72,6 +73,15 @@ let speed = 1;
 let currentFrame = 0;
 let lastSavedFlashHash = 0;
 let lastSaveFlushTime = performance.now();
+let isRecordingLoop = false;
+let isPlayingLoop = false;
+let loopRecordingStart = 0;
+let recordedLoopEvents = [];
+let storedLoopEvents = [];
+let storedLoopDuration = 0;
+let loopPlaybackTimeouts = [];
+let loopPlaybackHeldKeys = new Set();
+
 let automationReady;
 let resolveAutomationReady;
 if (automate) {
@@ -686,9 +696,91 @@ function setPressed(name, isPressed) {
   }
   document.querySelectorAll(`[data-key='${name}']`).forEach((el) => el.classList.toggle('pressed', isPressed));
   if (u16) writeKeys();
+  if (isRecordingLoop) {
+    recordedLoopEvents.push({ name, isPressed, t: performance.now() - loopRecordingStart });
+  }
+}
+
+function updateLoopStatus() {
+  if (isRecordingLoop) {
+    loopStatusEl.textContent = `Recording keystroke loop… ${recordedLoopEvents.length} events captured — press Q to stop.`;
+  } else if (isPlayingLoop) {
+    loopStatusEl.textContent = `Playing keystroke loop on repeat (${(storedLoopDuration / 1000).toFixed(1)}s, ${storedLoopEvents.length} events) — press W to stop.`;
+  } else if (storedLoopEvents.length) {
+    loopStatusEl.textContent = `Loop ready (${(storedLoopDuration / 1000).toFixed(1)}s, ${storedLoopEvents.length} events) — press W to play it on repeat, or Q to record a new one.`;
+  } else {
+    loopStatusEl.textContent = 'No loop recorded — press Q to start recording keystrokes.';
+  }
+}
+
+function releaseLoopPlaybackKeys() {
+  for (const name of loopPlaybackHeldKeys) setPressed(name, false);
+  loopPlaybackHeldKeys.clear();
+}
+
+function stopLoopPlayback() {
+  if (!isPlayingLoop) return;
+  isPlayingLoop = false;
+  for (const id of loopPlaybackTimeouts) clearTimeout(id);
+  loopPlaybackTimeouts = [];
+  releaseLoopPlaybackKeys();
+}
+
+function scheduleLoopPlayback() {
+  for (const event of storedLoopEvents) {
+    const id = setTimeout(() => {
+      setPressed(event.name, event.isPressed);
+      if (event.isPressed) loopPlaybackHeldKeys.add(event.name);
+      else loopPlaybackHeldKeys.delete(event.name);
+    }, event.t);
+    loopPlaybackTimeouts.push(id);
+  }
+  const restartId = setTimeout(() => {
+    loopPlaybackTimeouts = [];
+    releaseLoopPlaybackKeys();
+    scheduleLoopPlayback();
+  }, Math.max(storedLoopDuration, 16));
+  loopPlaybackTimeouts.push(restartId);
+}
+
+function toggleLoopRecording() {
+  stopLoopPlayback();
+  if (isRecordingLoop) {
+    isRecordingLoop = false;
+    storedLoopEvents = recordedLoopEvents;
+    storedLoopDuration = storedLoopEvents.reduce((max, event) => Math.max(max, event.t), 0);
+  } else {
+    recordedLoopEvents = [];
+    loopRecordingStart = performance.now();
+    isRecordingLoop = true;
+  }
+  updateLoopStatus();
+}
+
+function toggleLoopPlayback() {
+  if (isRecordingLoop) toggleLoopRecording();
+  if (isPlayingLoop) {
+    stopLoopPlayback();
+  } else if (storedLoopEvents.length) {
+    isPlayingLoop = true;
+    scheduleLoopPlayback();
+  }
+  updateLoopStatus();
 }
 
 window.addEventListener('keydown', (event) => {
+  if (event.code === 'KeyQ') {
+    event.preventDefault();
+    if (!event.repeat) toggleLoopRecording();
+    return;
+  }
+
+  if (event.code === 'KeyW') {
+    event.preventDefault();
+    if (!event.repeat) toggleLoopPlayback();
+    return;
+  }
+
   if (speedPresets.has(event.code)) {
     event.preventDefault();
     setSpeedFromExponent(speedToExponent(speedPresets.get(event.code)));

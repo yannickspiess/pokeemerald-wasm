@@ -37,3 +37,33 @@
   existing dev server; trivially editable for a different port/browser.
   Trade-off: requires Chrome and the local Node server to be available — it's
   not a fully standalone installed application.
+
+## 2026-06-07 - Fix the battle-animation WASM trap with a narrow #if WASM bounds check, not a broader rewrite
+- Context: The user hit `RuntimeError: table index is out of bounds at
+  pokeemerald.wasm.RunAnimScriptCommand` while using the new keystroke-loop
+  feature to mash up/down/a repeatedly during a wild battle. Root cause:
+  `RunAnimScriptCommand` (`src/battle_anim.c:330`) dispatches animation-script
+  commands via `sScriptCmdTable[sBattleAnimScriptPtr[0]]()`. Input arriving far
+  faster/denser than the original hardware (60 Hz sampling, human reflexes)
+  ever produced can leave `sBattleAnimScriptPtr` pointing at a garbage byte
+  outside the table. On real hardware that reads garbage memory as a function
+  pointer and limps along; in WASM, function pointers are indirect-call-table
+  indices, so an out-of-range one traps and halts the whole emulator.
+- Decision: Added a small `#if WASM`-guarded check directly at the dispatch
+  site — `if (sBattleAnimScriptPtr[0] >= ARRAY_COUNT(sScriptCmdTable))
+  { Cmd_end(); return; }` — that ends the broken animation gracefully instead
+  of trapping (commit `de8a0162e`). Considered alternatives: throttling input
+  rate from the keystroke-loop/speed-multiplier JS layer (would blunt the
+  automation feature's usefulness and not address the root inconsistency), or
+  rewriting the battle-animation state machine to be provably reentrant-safe
+  (large, invasive, against `AGENTS.md`'s "avoid broad rewrites of game logic"
+  guidance).
+- Consequences: Converts a hard crash into a gracefully-ended animation;
+  never triggers during normal play (the condition is only reachable once the
+  engine state is already inconsistent). Trade-off: it treats the *symptom*
+  (the WASM trap), not the underlying "engine reached an inconsistent state
+  from superhuman input rates" condition — a glitchy/skipped animation can
+  still occur where a crash used to. If similar traps surface from other
+  script-dispatch tables (field scripts, AI scripts, battle scripts proper),
+  the same narrow pattern is the template — apply and verify per site rather
+  than blanket-patching.

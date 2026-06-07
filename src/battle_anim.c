@@ -327,6 +327,19 @@ static void RunAnimScriptCommand(void)
 {
     do
     {
+#if WASM
+        // A corrupted/garbage script pointer (e.g. from input arriving far
+        // faster than the original hardware ever would) can produce a command
+        // byte outside sScriptCmdTable. On hardware that reads garbage memory
+        // as a function pointer and limps along; in WASM, function pointers
+        // are indirect-call-table indices, so an out-of-range one traps and
+        // halts the whole emulator. Treat it as end-of-script instead.
+        if (sBattleAnimScriptPtr[0] >= ARRAY_COUNT(sScriptCmdTable))
+        {
+            Cmd_end();
+            return;
+        }
+#endif
         sScriptCmdTable[sBattleAnimScriptPtr[0]]();
     } while (sAnimFramesToWait == 0 && gAnimScriptActive);
 }

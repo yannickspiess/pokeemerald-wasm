@@ -39,6 +39,15 @@ const keyMap = new Map([
   ['KeyS', 'r'], ['KeyA', 'l'],
 ]);
 
+const speedPresets = new Map([
+  ['Digit1', 1],
+  ['Digit2', 5],
+  ['Digit3', 10],
+  ['Digit4', 25],
+  ['Digit5', 1000],
+  ['Digit6', Infinity],
+]);
+
 const canvas = document.querySelector('#screen');
 const statusEl = document.querySelector('#status');
 const speedInput = document.querySelector('#speed');
@@ -680,6 +689,13 @@ function setPressed(name, isPressed) {
 }
 
 window.addEventListener('keydown', (event) => {
+  if (speedPresets.has(event.code)) {
+    event.preventDefault();
+    setSpeedFromExponent(speedToExponent(speedPresets.get(event.code)));
+    resetFpsCounters();
+    return;
+  }
+
   const name = keyMap.get(event.code);
   if (!name) return;
   event.preventDefault();

@@ -307,6 +307,13 @@ include map_data_rules.mk
 include json_data_rules.mk
 include audio_rules.mk
 
+# The wasm maps/map_events objects preprocess data/maps.s and data/map_events.s
+# directly, which #include per-map header.inc/events.inc/connections.inc files.
+# The native build path generates those as prerequisites of data/maps.o and
+# data/map_events.o (see map_data_rules.mk); mirror that here so `make wasm`
+# generates them too instead of failing on a missing #include.
+$(WASM_OBJ_DIR)/maps.o $(WASM_OBJ_DIR)/map_events.o: | $(MAP_HEADERS) $(MAP_EVENTS) $(MAP_CONNECTIONS)
+
 # NOTE: Tools must have been built prior (FIXME)
 # so you can't really call this rule directly
 generated: $(AUTO_GEN_TARGETS)
